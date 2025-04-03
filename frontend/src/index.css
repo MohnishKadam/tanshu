@@ -14,4 +14,9 @@ body {
 code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
     monospace;
+}
+
+/* Add padding to account for fixed navbar */
+.pt-16 {
+  padding-top: 4rem;
 } 

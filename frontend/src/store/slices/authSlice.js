@@ -1,99 +1,151 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
-import * as authApi from '../../api/auth';
+import axios from 'axios';
 
-export const loginUser = createAsyncThunk(
+const API_URL = 'http://localhost:5000/api/auth';
+
+// Check if there's a token in localStorage
+const token = localStorage.getItem('token');
+
+export const login = createAsyncThunk(
   'auth/login',
-  async (credentials) => {
-    const response = await authApi.login(credentials);
-    return response;
+  async (credentials, { rejectWithValue }) => {
+    try {
+      const response = await axios.post(`${API_URL}/login`, credentials);
+      // Store token in localStorage
+      if (response.data.token) {
+        localStorage.setItem('token', response.data.token);
+      }
+      return response.data;
+    } catch (error) {
+      return rejectWithValue(error.response?.data?.message || 'Login failed');
+    }
   }
 );
 
-export const registerUser = createAsyncThunk(
+export const register = createAsyncThunk(
   'auth/register',
-  async (userData) => {
-    const response = await authApi.register(userData);
-    return response;
+  async (userData, { rejectWithValue }) => {
+    try {
+      const response = await axios.post(`${API_URL}/register`, userData);
+      // Store token in localStorage if it's returned from registration
+      if (response.data.token) {
+        localStorage.setItem('token', response.data.token);
+      }
+      return response.data;
+    } catch (error) {
+      return rejectWithValue(error.response?.data?.message || 'Registration failed');
+    }
   }
 );
 
-export const fetchCurrentUser = createAsyncThunk(
-  'auth/fetchCurrentUser',
-  async () => {
-    const response = await authApi.getCurrentUser();
-    return response;
+export const getCurrentUser = createAsyncThunk(
+  'auth/getCurrentUser',
+  async (_, { rejectWithValue }) => {
+    try {
+      // Get token from localStorage
+      const token = localStorage.getItem('token');
+      
+      if (!token) {
+        return rejectWithValue('No token found');
+      }
+      
+      const response = await axios.get(`${API_URL}/me`, {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
+      
+      return response.data;
+    } catch (error) {
+      localStorage.removeItem('token');
+      return rejectWithValue(error.response?.data?.message || 'Failed to get current user');
+    }
   }
 );
-
-const initialState = {
-  user: null,
-  isAuthenticated: false,
-  loading: false,
-  error: null,
-};
 
 const authSlice = createSlice({
   name: 'auth',
-  initialState,
+  initialState: {
+    user: null,
+    token: token || null,
+    isAuthenticated: !!token,
+    loading: false,
+    error: null,
+    registrationSuccess: false,
+  },
   reducers: {
-    logout: (state) => {
+    logout(state) {
+      localStorage.removeItem('token');
       state.user = null;
+      state.token = null;
       state.isAuthenticated = false;
       state.error = null;
     },
-    clearError: (state) => {
+    clearAuthError(state) {
       state.error = null;
     },
+    clearRegistrationSuccess(state) {
+      state.registrationSuccess = false;
+    }
   },
   extraReducers: (builder) => {
     builder
       // Login
-      .addCase(loginUser.pending, (state) => {
+      .addCase(login.pending, (state) => {
         state.loading = true;
         state.error = null;
       })
-      .addCase(loginUser.fulfilled, (state, action) => {
+      .addCase(login.fulfilled, (state, action) => {
         state.loading = false;
-        state.isAuthenticated = true;
         state.user = action.payload.user;
-        state.error = null;
+        state.token = action.payload.token;
+        state.isAuthenticated = true;
       })
-      .addCase(loginUser.rejected, (state, action) => {
+      .addCase(login.rejected, (state, action) => {
         state.loading = false;
-        state.error = action.error.message;
+        state.error = action.payload;
       })
+      
       // Register
-      .addCase(registerUser.pending, (state) => {
+      .addCase(register.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+        state.registrationSuccess = false;
+      })
+      .addCase(register.fulfilled, (state, action) => {
+        state.loading = false;
+        state.registrationSuccess = true;
+        if (action.payload.token) {
+          state.token = action.payload.token;
+          state.user = action.payload.user;
+          state.isAuthenticated = true;
+        }
+      })
+      .addCase(register.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload;
+        state.registrationSuccess = false;
+      })
+      
+      // Get Current User
+      .addCase(getCurrentUser.pending, (state) => {
         state.loading = true;
         state.error = null;
       })
-      .addCase(registerUser.fulfilled, (state, action) => {
+      .addCase(getCurrentUser.fulfilled, (state, action) => {
         state.loading = false;
-        state.isAuthenticated = true;
         state.user = action.payload.user;
-        state.error = null;
-      })
-      .addCase(registerUser.rejected, (state, action) => {
-        state.loading = false;
-        state.error = action.error.message;
-      })
-      // Fetch Current User
-      .addCase(fetchCurrentUser.pending, (state) => {
-        state.loading = true;
-        state.error = null;
-      })
-      .addCase(fetchCurrentUser.fulfilled, (state, action) => {
-        state.loading = false;
         state.isAuthenticated = true;
-        state.user = action.payload;
-        state.error = null;
       })
-      .addCase(fetchCurrentUser.rejected, (state, action) => {
+      .addCase(getCurrentUser.rejected, (state, action) => {
         state.loading = false;
-        state.error = action.error.message;
+        state.user = null;
+        state.token = null;
+        state.isAuthenticated = false;
       });
-  },
+  }
 });
 
-export const { logout, clearError } = authSlice.actions;
+export const { logout, clearAuthError, clearRegistrationSuccess } = authSlice.actions;
+
 export default authSlice.reducer; 

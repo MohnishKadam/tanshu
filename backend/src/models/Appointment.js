@@ -1,35 +1,37 @@
 const mongoose = require('mongoose');
 
 const appointmentSchema = new mongoose.Schema({
-  userId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: true
+  name: {
+    type: String,
+    required: true,
+    trim: true
+  },
+  email: {
+    type: String,
+    required: true,
+    trim: true,
+    lowercase: true
   },
   date: {
-    type: Date,
+    type: String,
     required: true
   },
   time: {
     type: String,
     required: true
   },
-  status: {
+  service: {
     type: String,
-    enum: ['booked', 'cancelled', 'completed'],
-    default: 'booked'
-  },
-  googleCalendarEventId: {
-    type: String,
-    default: null
+    required: true
   },
   notes: {
     type: String,
-    trim: true,
-    maxlength: [500, 'Notes cannot be more than 500 characters']
+    default: ''
+  },
+  createdAt: {
+    type: Date,
+    default: Date.now
   }
-}, {
-  timestamps: true
 });
 
 // Index for querying appointments by date and time
