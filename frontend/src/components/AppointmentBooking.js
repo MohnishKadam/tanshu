@@ -2,7 +2,11 @@ import React, { useState, useEffect } from "react";
 import Calendar from "react-calendar";
 import "react-calendar/dist/Calendar.css";
 import emailjs from "@emailjs/browser";
+import axios from "axios";
 import "./AppointmentBooking.css";
+
+// Define the API URL for appointments
+const API_URL = "http://localhost:5000/api/appointments";
 
 export const AppointmentBooking = () => {
   const [name, setName] = useState("");
@@ -14,46 +18,84 @@ export const AppointmentBooking = () => {
   const [bookingError, setBookingError] = useState(null);
   const [availableTimeSlots, setAvailableTimeSlots] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [debugInfo, setDebugInfo] = useState(null);
 
   // Initialize EmailJS
   useEffect(() => {
     emailjs.init("eTO5gmqMPncxTr98F");
   }, []);
 
-  // Simulate fetching available time slots for selected date
+  // Fetch available time slots for selected date from the database
   useEffect(() => {
-    const generateTimeSlots = () => {
+    const fetchAvailableSlots = async () => {
       setLoading(true);
-      // Simulate API call delay
-      setTimeout(() => {
-        const slots = [];
-        const currentDate = new Date();
-        const isToday = date.toDateString() === currentDate.toDateString();
-        const currentHour = currentDate.getHours();
+      setBookingError(null);
+      
+      try {
+        // Format date as YYYY-MM-DD for API
+        const formattedDate = date.toISOString().split('T')[0];
         
-        // Generate time slots from 9 AM to 5 PM
-        for (let hour = 9; hour <= 17; hour++) {
-          // If it's today, only show future time slots
-          if (!isToday || hour > currentHour) {
-            // Randomly mark some slots as unavailable
-            const isAvailable = Math.random() > 0.3;
-            slots.push({
-              time: `${hour}:00`,
-              available: isAvailable
-            });
-            slots.push({
-              time: `${hour}:30`,
-              available: Math.random() > 0.3
-            });
-          }
-        }
+        console.log(`Fetching slots for date: ${formattedDate}`);
+        // Fetch available slots from the API
+        const response = await axios.get(`${API_URL}/available-slots/${formattedDate}`);
+        console.log("API Response:", response.data);
+        
+        // Convert the array of available times to the expected format
+        const slots = response.data.availableSlots.map(time => ({
+          time,
+          available: true
+        }));
+        
         setAvailableTimeSlots(slots);
+        setDebugInfo(null);
+      } catch (error) {
+        console.error("Error fetching available slots:", error);
+        setDebugInfo({
+          error: error.message,
+          status: error.response?.status,
+          data: error.response?.data
+        });
+        
+        // If API fails or not available, generate dummy slots
+        if (error.response && error.response.status === 404) {
+          console.warn("Available slots endpoint not found. Generating slots.");
+          generateFallbackSlots();
+        } else {
+          setBookingError("Failed to fetch available time slots. Please try again.");
+          generateFallbackSlots();
+        }
+      } finally {
         setLoading(false);
-      }, 500);
+      }
+    };
+
+    // Fallback function to generate time slots if API fails
+    const generateFallbackSlots = () => {
+      const slots = [];
+      const currentDate = new Date();
+      const isToday = date.toDateString() === currentDate.toDateString();
+      const currentHour = currentDate.getHours();
+      
+      // Generate time slots from 9 AM to 5 PM
+      for (let hour = 9; hour <= 17; hour++) {
+        // If it's today, only show future time slots
+        if (!isToday || hour > currentHour) {
+          const formattedHour = hour.toString().padStart(2, '0');
+          slots.push({
+            time: `${formattedHour}:00`,
+            available: true
+          });
+          slots.push({
+            time: `${formattedHour}:30`,
+            available: true
+          });
+        }
+      }
+      setAvailableTimeSlots(slots);
     };
 
     if (date) {
-      generateTimeSlots();
+      fetchAvailableSlots();
     }
   }, [date]);
 
@@ -66,39 +108,63 @@ export const AppointmentBooking = () => {
     setTime(selectedTime);
   };
 
-  const handleBooking = (e) => {
+  const handleBooking = async (e) => {
     e.preventDefault();
     setLoading(true);
     setBookingError(null);
+    setDebugInfo(null);
 
-    const templateParams = {
-      to_email: "mohnish2k2@gmail.com",
-      user_name: name,
-      user_purpose: purpose,
-      user_email: email,
-      appointment_date: date.toDateString(),
-      appointment_time: time,
-    };
+    try {
+      // Format date for API
+      const formattedDate = date.toISOString().split('T')[0];
+      
+      const bookingData = {
+        name,
+        email,
+        date: formattedDate,
+        time,
+        purpose,
+        notes: ""
+      };
+      
+      console.log("Sending booking request:", bookingData);
+      
+      // Book appointment via API
+      const response = await axios.post(`${API_URL}/book`, bookingData);
+      console.log("Booking response:", response.data);
+      
+      // Send email confirmation
+      const templateParams = {
+        to_email: "mohnish2k2@gmail.com",
+        user_name: name,
+        user_purpose: purpose,
+        user_email: email,
+        appointment_date: date.toDateString(),
+        appointment_time: time,
+      };
 
-    console.log("Sending Email with:", templateParams);
-
-    emailjs
-      .send("service_k1w5xhf", "template_st6y1uo", templateParams)
-      .then((response) => {
-        console.log("SUCCESS!", response.status, response.text);
-        setBookingSuccess(true);
-        setLoading(false);
-        // Reset form
-        setName("");
-        setPurpose("");
-        setEmail("");
-        setTime("");
-      })
-      .catch((error) => {
-        console.error("FAILED...", error);
-        setBookingError(`Failed to book appointment: ${error.text}`);
-        setLoading(false);
+      await emailjs.send("service_k1w5xhf", "template_st6y1uo", templateParams);
+      
+      setBookingSuccess(true);
+      // Reset form
+      setName("");
+      setPurpose("");
+      setEmail("");
+      setTime("");
+    } catch (error) {
+      console.error("Booking failed:", error);
+      setDebugInfo({
+        error: error.message,
+        status: error.response?.status,
+        data: error.response?.data
       });
+      setBookingError(
+        error.response?.data?.message || 
+        "Failed to book appointment. Please try again."
+      );
+    } finally {
+      setLoading(false);
+    }
   };
 
   const tileClassName = ({ date: tileDate }) => {
@@ -155,6 +221,15 @@ export const AppointmentBooking = () => {
         </div>
       )}
       
+      {debugInfo && (
+        <div className="debug-info" style={{background: '#f8f9fa', padding: '10px', marginBottom: '15px', fontSize: '12px'}}>
+          <details>
+            <summary>Debug Information</summary>
+            <pre>{JSON.stringify(debugInfo, null, 2)}</pre>
+          </details>
+        </div>
+      )}
+      
       <form className="form" onSubmit={handleBooking}>
         <div className="form-grid">
           <div className="form-left">
@@ -171,6 +246,8 @@ export const AppointmentBooking = () => {
               <h3>Available Time Slots</h3>
               {loading ? (
                 <p className="loading-text">Loading available times...</p>
+              ) : availableTimeSlots.length === 0 ? (
+                <p className="no-slots-message">No available time slots for this date.</p>
               ) : (
                 <div className="time-slots">
                   {availableTimeSlots.map((slot, index) => (

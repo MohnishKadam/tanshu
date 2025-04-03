@@ -1,5 +1,4 @@
-import { Request, Response, NextFunction } from 'express';
-import { Document, Model, Types } from 'mongoose';
+import { Document, Model, Schema, Types } from 'mongoose';
 
 export interface User {
   name: string;
@@ -23,6 +22,7 @@ export interface UserMethods {
 }
 
 export interface UserDocument extends Document {
+  _id: Types.ObjectId;
   name: string;
   email: string;
   password: string;
@@ -42,8 +42,15 @@ export interface AppointmentDocument extends Document {
   googleCalendarEventId?: string;
 }
 
-export interface AuthRequest extends Request {
+// Express types
+export interface AuthRequest {
   user?: UserDocument;
+  query: any;
+  params: any;
+  body: any;
+  headers: any;
+  method: string;
+  url: string;
 }
 
 export interface GoogleCalendarEvent {
@@ -60,4 +67,8 @@ export interface GoogleCalendarEvent {
   };
 }
 
-export type RequestHandler = (req: Request, res: Response, next: NextFunction) => Promise<void>; 
+export type RequestHandler = (
+  req: any, 
+  res: any, 
+  next: any
+) => Promise<void>; 
